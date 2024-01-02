@@ -1,0 +1,239 @@
+#!/bin/sh
+#本脚本创建虚拟网络拓扑，并为各接口配置IP地址，但未进行路由配置。
+set -x
+
+#开启ip分组转发
+sysctl -w net.ipv4.ip_forward=1
+#为更好的模拟路由器工作，需关闭Linux防火墙，避免路由器进行IP分片重组
+systemctl stop firewalld.service
+#关闭Linux反向路径校验
+sysctl -w net.ipv4.conf.all.rp_filter=0
+sysctl -w net.ipv4.conf.default.rp_filter=0
+#iptables服务,进行TCP相关实验时需要开启，进行ICMP目的不可达实验时也需要开启
+systemctl start iptables.service
+#启用linux内核的ICMP重定向响应,进行ICMP重定向实验时需要开启
+sysctl -w net.ipv4.conf.all.accept_redirects=1
+
+#创建brHA及其相连的主机NS，配置IP和默认路由
+#创建Bridge
+brctl addbr brHA
+#创建namespace
+ip netns add nsHA
+#将lo接口上线
+ip netns exec nsHA ip link set lo up
+#创建veth pair
+ip link add tapHA type veth peer name tapHA_p
+#把tap迁移到namespace
+ip link set tapHA netns nsHA
+#把相应tap添加到Bridge中
+brctl addif brHA tapHA_p
+#配置IP地址
+ip netns exec nsHA ip addr add local 172.20.1.1/25 dev tapHA
+#将Bridge及相关tap状态设置为up
+ip link set brHA up
+ip link set tapHA_p up
+ip netns exec nsHA ip link set tapHA up
+#配置默认路由
+ip netns exec nsHA route add default gw 172.20.1.101
+
+#创建brHB及其相连的主机NS，配置IP和默认路由
+#创建Bridge
+brctl addbr brHB
+#创建namespace
+ip netns add nsHB
+#将lo接口上线
+ip netns exec nsHB ip link set lo up
+#创建veth pair
+ip link add tapHB type veth peer name tapHB_p
+#把tap迁移到namespace
+ip link set tapHB netns nsHB
+#把相应tap添加到Bridge中
+brctl addif brHB tapHB_p
+#配置IP地址
+ip netns exec nsHB ip addr add local 172.20.1.129/25 dev tapHB
+#将Bridge及相关tap状态设置为up
+ip link set brHB up
+ip link set tapHB_p up
+ip netns exec nsHB ip link set tapHB up
+#配置默认路由
+ip netns exec nsHB route add default gw 172.20.1.229
+
+#创建brHC及其相连的主机NS，配置IP和默认路由
+#创建Bridge
+brctl addbr brHC
+#创建namespace
+ip netns add nsHC
+#将lo接口上线
+ip netns exec nsHC ip link set lo up
+#创建veth pair
+ip link add tapHC type veth peer name tapHC_p
+#把tap迁移到namespace
+ip link set tapHC netns nsHC
+#把相应tap添加到Bridge中
+brctl addif brHC tapHC_p
+#配置IP地址
+ip netns exec nsHC ip addr add local 172.20.2.1/25 dev tapHC
+#将Bridge及相关tap状态设置为up
+ip link set brHC up
+ip link set tapHC_p up
+ip netns exec nsHC ip link set tapHC up
+#配置默认路由
+ip netns exec nsHC route add default gw 172.20.2.51
+
+#创建brHD及其相连的主机NS，配置IP和默认路由
+#创建Bridge
+brctl addbr brHD
+#创建namespace
+ip netns add nsHD
+#将lo接口上线
+ip netns exec nsHD ip link set lo up
+#创建veth pair
+ip link add tapHD type veth peer name tapHD_p
+#把tap迁移到namespace
+ip link set tapHD netns nsHD
+#把相应tap添加到Bridge中
+brctl addif brHD tapHD_p
+#配置IP地址
+ip netns exec nsHD ip addr add local 172.20.0.1/24 dev tapHD
+#将Bridge及相关tap状态设置为up
+ip link set brHD up
+ip link set tapHD_p up
+ip netns exec nsHD ip link set tapHD up
+#配置默认路由
+ip netns exec nsHD route add default gw 172.20.0.201
+
+#创建brHE及其相连的主机NS，配置IP和默认路由
+#创建Bridge
+brctl addbr brHE
+#创建namespace
+ip netns add nsHE
+#将lo接口上线
+ip netns exec nsHE ip link set lo up
+#创建veth pair
+ip link add tapHE type veth peer name tapHE_p
+#把tap迁移到namespace
+ip link set tapHE netns nsHE
+#把相应tap添加到Bridge中
+brctl addif brHE tapHE_p
+#配置IP地址
+ip netns exec nsHE ip addr add local 172.20.2.129/25 dev tapHE
+#将Bridge及相关tap状态设置为up
+ip link set brHE up
+ip link set tapHE_p up
+ip netns exec nsHE ip link set tapHE up
+#配置默认路由
+ip netns exec nsHE route add default gw 172.20.2.179
+
+#创建各路由器NS
+ip netns add RA
+ip netns add RB
+ip netns add RC
+ip netns add RD
+#各路由器lo接口上线
+ip netns exec RA ip link set lo up
+ip netns exec RB ip link set lo up
+ip netns exec RC ip link set lo up
+ip netns exec RD ip link set lo up
+
+#连接路由器RB和网桥brHA
+#创建veth pair
+ip link add tapRB_HA type veth peer name tapHA_RB
+#把tap迁移到路由器和网桥
+ip link set tapRB_HA netns RB
+brctl addif brHA tapHA_RB
+#配置相应tap的IP地址
+ip netns exec RB ip addr add local 172.20.1.101/25 dev tapRB_HA
+#将相关tap状态设置为up
+ip netns exec RB ip link set tapRB_HA up
+ip link set tapHA_RB up
+
+#连接路由器RB和网桥brHB
+#创建veth pair
+ip link add tapRB_HB type veth peer name tapHB_RB
+#把tap迁移到路由器和网桥
+ip link set tapRB_HB netns RB
+brctl addif brHB tapHB_RB
+#配置相应tap的IP地址
+ip netns exec RB ip addr add local 172.20.1.229/25 dev tapRB_HB
+#将相关tap状态设置为up
+ip netns exec RB ip link set tapRB_HB up
+ip link set tapHB_RB up
+
+#连接路由器RC和网桥brHC
+#创建veth pair
+ip link add tapRC_HC type veth peer name tapHC_RC
+#把tap迁移到路由器和网桥
+ip link set tapRC_HC netns RC
+brctl addif brHC tapHC_RC
+#配置相应tap的IP地址
+ip netns exec RC ip addr add local 172.20.2.51/25 dev tapRC_HC
+#将相关tap状态设置为up
+ip netns exec RC ip link set tapRC_HC up
+ip link set tapHC_RC up
+
+#连接路由器RC和网桥brHD
+#创建veth pair
+ip link add tapRC_HD type veth peer name tapHD_RC
+#把tap迁移到路由器和网桥
+ip link set tapRC_HD netns RC
+brctl addif brHD tapHD_RC
+#配置相应tap的IP地址
+ip netns exec RC ip addr add local 172.20.0.201/24 dev tapRC_HD
+#将相关tap状态设置为up
+ip netns exec RC ip link set tapRC_HD up
+ip link set tapHD_RC up
+
+#连接路由器RA和网桥brHE
+#创建veth pair
+ip link add tapRA_HE type veth peer name tapHE_RA
+#把tap迁移到路由器和网桥
+ip link set tapRA_HE netns RA
+brctl addif brHE tapHE_RA
+#配置相应tap的IP地址
+ip netns exec RA ip addr add local 172.20.2.179/25 dev tapRA_HE
+#将相关tap状态设置为up
+ip netns exec RA ip link set tapRA_HE up
+ip link set tapHE_RA up
+
+
+#连接路由器RA和路由器RB
+#创建veth pair
+ip link add tapRA_RB type veth peer name tapRB_RA
+#把tap迁移到路由器
+ip link set tapRA_RB netns RA
+ip link set tapRB_RA netns RB
+#配置相应tap的IP地址
+ip netns exec RA ip addr add local 172.20.3.1/30 dev tapRA_RB
+ip netns exec RB ip addr add local 172.20.3.2/30 dev tapRB_RA
+#将相关tap状态设置为up
+ip netns exec RA ip link set tapRA_RB up
+ip netns exec RB ip link set tapRB_RA up
+
+#连接路由器RA和路由器RC
+#创建veth pair
+ip link add tapRA_RC type veth peer name tapRC_RA
+#把tap迁移到路由器
+ip link set tapRA_RC netns RA
+ip link set tapRC_RA netns RC
+#配置相应tap的IP地址
+ip netns exec RA ip addr add local 172.20.3.5/30 dev tapRA_RC
+ip netns exec RC ip addr add local 172.20.3.6/30 dev tapRC_RA
+#将相关tap状态设置为up
+ip netns exec RA ip link set tapRA_RC up
+ip netns exec RC ip link set tapRC_RA up
+
+#连接路由器RA和Linux Host
+#创建veth pair
+ip link add tapRA_H type veth peer name tapH_RA
+#把tap迁移到路由器
+ip link set tapRA_H netns RA
+#配置相应tap的IP地址
+ip netns exec RA ip addr add local 202.196.78.123/24 dev tapRA_H
+ip addr add local 202.196.78.124/24 dev tapH_RA
+#将相关tap状态设置为up
+ip netns exec RA ip link set tapRA_H up
+ip link set tapH_RA up
+#为Linux Host配置到虚拟实验网络的路由
+route add -net 172.20.0.0/16 gw 202.196.78.123
+
+#END
